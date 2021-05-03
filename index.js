@@ -4,12 +4,12 @@ var utils_js_1 = require("./utils.js");
 var p = 1 / 1.07;
 var Model = /** @class */ (function () {
     function Model(_a) {
-        var breakpointValueMap = _a.breakpointValueMap, _b = _a.timeDiscount, timeDiscount = _b === void 0 ? p : _b;
+        var breakpointValueMap = _a.breakpointValueMap, _b = _a.timeDiscount, timeDiscount = _b === void 0 ? p : _b, policy = _a.policy;
         this.breakpointValueMap = breakpointValueMap;
         this.breakpoints = Array.from(breakpointValueMap.keys());
         this.maxBreakpoint = Math.max.apply(Math, this.breakpoints);
         this.timeDiscount = timeDiscount;
-        this.policy = new Map();
+        this.policy = policy !== null && policy !== void 0 ? policy : new Map();
     }
     Model.prototype.calculateUpdatedValuesAndErrors = function () {
         var _this = this;
@@ -24,7 +24,7 @@ var Model = /** @class */ (function () {
         return [updatedBreakpointValueMap, errors, updatedPolicy];
     };
     Model.prototype.getUpdatedValue = function (breakpoint) {
-        if (breakpoint === "0")
+        if (breakpoint === 0)
             return [0, 0];
         var log = false;
         // If bet at most 1/2:
@@ -52,6 +52,9 @@ var Model = /** @class */ (function () {
             // let n = Math.floor(m / 2); // n is the closest breakpoint to x
             var loseComponent = this.getValue(breakpoint - 1 - m / 2);
             var winComponent = this.getValue(breakpoint - 1 + m);
+            if (loseComponent === undefined || winComponent === undefined) {
+                throw new Error("undefined loseComponent/winComponent");
+            }
             var potentialValueComponent = (loseComponent + winComponent) / 2;
             log &&
                 console.log({
@@ -131,11 +134,16 @@ var Model = /** @class */ (function () {
         else {
             log && console.trace("hi");
             var diff = x - lower;
-            res =
-                diff * this.breakpointValueMap.get(upper) +
-                    (1 - diff) * this.breakpointValueMap.get(lower);
+            var upperValue = this.breakpointValueMap.get(upper);
+            var lowerValue = this.breakpointValueMap.get(lower);
+            if (upperValue === undefined || lowerValue === undefined) {
+                throw new Error("undefined value");
+            }
+            res = diff * upperValue + (1 - diff) * lowerValue;
         }
         log && console.log(res);
+        if (res === undefined)
+            throw new Error("undefined value");
         return res;
     };
     Model.prototype.iterateInPlace = function (n, logTotalError) {
@@ -155,11 +163,18 @@ var Model = /** @class */ (function () {
             }
         }
     };
+    Model.prototype.save = function () {
+        utils_js_1.saveJsonToFile(JSON.stringify({
+            policy: Array.from(this.policy.entries()),
+            breakpointValueMap: Array.from(this.breakpointValueMap.entries())
+        }));
+    };
     return Model;
 }());
-var randBreakpointInit = { 0: 0 };
+var randBreakpointInit = new Map();
+randBreakpointInit.set(0, 0);
 for (var i = 1; i < 1001; i++) {
-    randBreakpointInit[i] = Math.random();
+    randBreakpointInit.set(i, Math.random());
 }
 var model = new Model({ breakpointValueMap: randBreakpointInit });
 model.iterateInPlace(20);
@@ -170,3 +185,4 @@ while (model.breakpointValueMap.get(100) > expectedMax * 1.01 ||
 }
 console.log(model.breakpointValueMap);
 console.log(model.policy);
+model.save();

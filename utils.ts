@@ -30,9 +30,9 @@ export function totalSquare<T>(errors: Map<T, number>) {
   }, 0);
 }
 
-export function saveJsonToFile<K, V>(map: Map<K, V>, path = "./temp") {
+export function saveJsonToFile(map: string, path = "./temp") {
   try {
-    fs.writeFileSync(path, JSON.stringify(Array.from(map.entries())), {
+    fs.writeFileSync(path, map, {
       encoding: "utf-8",
     });
   } catch (err) {
@@ -41,9 +41,14 @@ export function saveJsonToFile<K, V>(map: Map<K, V>, path = "./temp") {
 }
 export function retrieveSavedModel<K, V>(path = "./temp") {
   try {
-    return new Map(
-      JSON.parse(fs.readFileSync(path, { encoding: "utf-8" })) as [k: K, v: V][]
-    );
+    let entries = JSON.parse(fs.readFileSync(path, { encoding: "utf-8" })) as {
+      policy: [k: K, v: V][];
+      breakpointValueMap: [k: K, v: V][];
+    };
+    return {
+      policy: new Map(entries.policy),
+      breakpointValueMap: new Map(entries.breakpointValueMap),
+    };
   } catch (err) {
     console.error(err);
   }

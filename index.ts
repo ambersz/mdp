@@ -1,25 +1,29 @@
-import { difference, operateOverProperties, totalSquare } from "./utils.js";
+import {
+  difference,
+  operateOverProperties,
+  retrieveSavedModel,
+  saveJsonToFile,
+  totalSquare,
+} from "./utils.js";
 
 const p = 1 / 1.07;
-
+type modelParams = {
+  breakpointValueMap: Map<number, number>;
+  policy?: Map<number, number>;
+  timeDiscount?: number;
+};
 class Model {
   breakpointValueMap: Map<number, number>;
   breakpoints: number[];
   maxBreakpoint: number;
   timeDiscount: number;
   policy: Map<number, number>;
-  constructor({
-    breakpointValueMap,
-    timeDiscount = p,
-  }: {
-    breakpointValueMap: Map<number, number>;
-    timeDiscount?: number;
-  }) {
+  constructor({ breakpointValueMap, timeDiscount = p, policy }: modelParams) {
     this.breakpointValueMap = breakpointValueMap;
     this.breakpoints = Array.from(breakpointValueMap.keys());
     this.maxBreakpoint = Math.max(...this.breakpoints);
     this.timeDiscount = timeDiscount;
-    this.policy = new Map();
+    this.policy = policy ?? new Map();
   }
 
   calculateUpdatedValuesAndErrors(): Map<number, number>[] {
@@ -181,15 +185,29 @@ class Model {
       }
     }
   }
+  save() {
+    saveJsonToFile(
+      JSON.stringify({
+        policy: Array.from(this.policy.entries()),
+        breakpointValueMap: Array.from(this.breakpointValueMap.entries()),
+      })
+    );
+  }
 }
 
-let randBreakpointInit = new Map();
-randBreakpointInit.set(0, 0);
-for (let i = 1; i < 1001; i++) {
-  randBreakpointInit.set(i, Math.random());
+const previousModel = retrieveSavedModel<number, number>();
+let initModel: modelParams;
+if (previousModel !== undefined) {
+  initModel = previousModel;
+} else {
+  let randBreakpointInit = new Map();
+  randBreakpointInit.set(0, 0);
+  for (let i = 1; i < 1001; i++) {
+    randBreakpointInit.set(i, Math.random());
+  }
+  initModel = { breakpointValueMap: randBreakpointInit };
 }
-
-let model = new Model({ breakpointValueMap: randBreakpointInit });
+let model = new Model(initModel);
 model.iterateInPlace(20);
 const expectedMax = 1 / (1 - p);
 while (
@@ -200,3 +218,4 @@ while (
 }
 console.log(model.breakpointValueMap);
 console.log(model.policy);
+model.save();

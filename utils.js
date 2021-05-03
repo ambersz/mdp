@@ -1,6 +1,6 @@
 "use strict";
 exports.__esModule = true;
-exports.saveJsonToFile = exports.totalSquare = exports.difference = exports.operateOverProperties = void 0;
+exports.retrieveSavedModel = exports.saveJsonToFile = exports.totalSquare = exports.difference = exports.operateOverProperties = void 0;
 var _ = require("lodash");
 var fs = require("fs");
 function operateOverProperties(primaryObject, secondaryObject, operator) {
@@ -13,6 +13,8 @@ function operateOverProperties(primaryObject, secondaryObject, operator) {
 }
 exports.operateOverProperties = operateOverProperties;
 function difference(a, b) {
+    if (a === undefined || b === undefined)
+        throw new Error("undefined difference");
     return a - b;
 }
 exports.difference = difference;
@@ -22,13 +24,25 @@ function totalSquare(errors) {
     }, 0);
 }
 exports.totalSquare = totalSquare;
-function saveJsonToFile(object, path) {
+function saveJsonToFile(map, path) {
     if (path === void 0) { path = "./temp"; }
     try {
-        fs.writeFileSync(path, JSON.stringify(object));
+        fs.writeFileSync(path, map, {
+            encoding: "utf-8"
+        });
     }
     catch (err) {
         console.error(err);
     }
 }
 exports.saveJsonToFile = saveJsonToFile;
+function retrieveSavedModel(path) {
+    if (path === void 0) { path = "./temp"; }
+    try {
+        return new Map(JSON.parse(fs.readFileSync(path, { encoding: "utf-8" })));
+    }
+    catch (err) {
+        console.error(err);
+    }
+}
+exports.retrieveSavedModel = retrieveSavedModel;
