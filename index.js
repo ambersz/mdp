@@ -171,12 +171,20 @@ var Model = /** @class */ (function () {
     };
     return Model;
 }());
-var randBreakpointInit = new Map();
-randBreakpointInit.set(0, 0);
-for (var i = 1; i < 1001; i++) {
-    randBreakpointInit.set(i, Math.random());
+var previousModel = utils_js_1.retrieveSavedModel();
+var initModel;
+if (previousModel !== undefined) {
+    initModel = previousModel;
 }
-var model = new Model({ breakpointValueMap: randBreakpointInit });
+else {
+    var randBreakpointInit = new Map();
+    randBreakpointInit.set(0, 0);
+    for (var i = 1; i < 1001; i++) {
+        randBreakpointInit.set(i, Math.random());
+    }
+    initModel = { breakpointValueMap: randBreakpointInit };
+}
+var model = new Model(initModel);
 model.iterateInPlace(20);
 var expectedMax = 1 / (1 - p);
 while (model.breakpointValueMap.get(100) > expectedMax * 1.01 ||

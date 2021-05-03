@@ -39,7 +39,11 @@ exports.saveJsonToFile = saveJsonToFile;
 function retrieveSavedModel(path) {
     if (path === void 0) { path = "./temp"; }
     try {
-        return new Map(JSON.parse(fs.readFileSync(path, { encoding: "utf-8" })));
+        var entries = JSON.parse(fs.readFileSync(path, { encoding: "utf-8" }));
+        return {
+            policy: new Map(entries.policy),
+            breakpointValueMap: new Map(entries.breakpointValueMap)
+        };
     }
     catch (err) {
         console.error(err);
