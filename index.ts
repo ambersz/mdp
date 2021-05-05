@@ -30,7 +30,7 @@ class Model {
     let updatedBreakpointValueMap = new Map();
     let updatedPolicy = new Map();
     this.breakpoints.forEach((breakpoint) => {
-      const [newValue, newPolicy] = this.getUpdatedValue(breakpoint);
+      const [newValue, newPolicy] = this.getNextValueAtBreakpoint(breakpoint);
       updatedBreakpointValueMap.set(breakpoint, newValue);
       updatedPolicy.set(breakpoint, newPolicy);
     });
@@ -41,7 +41,7 @@ class Model {
     );
     return [updatedBreakpointValueMap, errors, updatedPolicy];
   }
-  getUpdatedValue(breakpoint: number) {
+  getNextValueAtBreakpoint(breakpoint: number) {
     if (breakpoint === 0) return [0, 0];
     let log = false;
     // If bet at most 1/2:
@@ -129,7 +129,7 @@ class Model {
 
     return [maxTotalValue, bet];
   }
-  getArbitraryUpdatedValue(x: number) {
+  getNextValue(x: number) {
     let b = 0;
     while (b < x) {}
   }
