@@ -5,31 +5,83 @@ import {
   saveJsonToFile,
   totalSquare,
 } from "./utils.js";
+import _ from "lodash";
 
-const p = 1 / 1.07;
+const p = 1 - 1 / 58.6; // 1/additional life expectancy in years based on ssa actuarial charts
+const returns = JSON.parse(
+  "[1.164,0.952,0.776,1.123,1.23,1.03,1.077,1.25,1.181,1.15,0.969,1.43,1.014,1.221,1.304,1.21,0.961,1.25,1.037,1.169,1.152,1.134,1.048,1.197,1.258,1.294,1.232,1.216,1.115,0.831,0.862,1.007,1.21,1.104,1.119,1.15,0.843,0.806,1.251,1.14,1.101,1.231,1.198,1.08,1.023,1.199,1.142,1.072,1.121]"
+); // yearly multiplier on Wilshire 5000 Total Market Full Cap index, data from FRED
+const numberOfIncomeBreakpoints = 100;
+
+type state = [number, number];
 type modelParams = {
-  breakpointValueMap: Map<number, number>;
-  policy?: Map<number, number>;
+  breakpointValueMap?: Map<state, number>;
+  policy?: Map<state, number>;
   timeDiscount?: number;
+  netWorthBreakpoints: number[];
+  startingIncome: state[1];
 };
 class Model {
-  breakpointValueMap: Map<number, number>;
-  breakpoints: number[];
-  maxBreakpoint: number;
+  breakpointValueMap: Map<state, number>;
+  netWorthBreakpoints: state[0][];
+  incomeBreakpoints: state[1][];
+  maxNetWorthBreakpoint: state[0];
   timeDiscount: number;
-  policy: Map<number, number>;
-  constructor({ breakpointValueMap, timeDiscount = p, policy }: modelParams) {
-    this.breakpointValueMap = breakpointValueMap;
-    this.breakpoints = Array.from(breakpointValueMap.keys());
-    this.maxBreakpoint = Math.max(...this.breakpoints);
-    this.timeDiscount = timeDiscount;
+  policy: Map<state, number>;
+  constructor({
+    breakpointValueMap,
+    netWorthBreakpoints,
+    timeDiscount = p,
+    policy,
+    startingIncome,
+  }: modelParams) {
+    this.netWorthBreakpoints =
+      netWorthBreakpoints ??
+      _.uniq(Array.from(breakpointValueMap?.keys?.() ?? []).map((s) => s[0]));
+    this.maxNetWorthBreakpoint = Math.max(...this.netWorthBreakpoints);
+    this.incomeBreakpoints = this.createIncomeBreakpoints(startingIncome);
+    this.breakpointValueMap =
+      breakpointValueMap ??
+      this.createRandomInitialValueMap(
+        netWorthBreakpoints,
+        this.incomeBreakpoints
+      );
+    this.timeDiscount = timeDiscount; // can also contain probability of dying each year
     this.policy = policy ?? new Map();
   }
-
+  createIncomeBreakpoints(max: number): number[] {
+    // income breakpoints should be set at consistent percentage decreases. What should be the minimum non-zero income?
+    // Use income = costs as a mid-point, half of the breakpoints should be above it, and half should be below
+    const maxlog = Math.log(max);
+    const d = (maxlog / numberOfIncomeBreakpoints) * 2;
+    let res = [];
+    let D = Math.floor(numberOfIncomeBreakpoints / 2);
+    for (let i = -D; i < D; i++) {
+      res.push(Math.exp(d * i));
+    }
+    return res;
+  }
+  createRandomInitialValueMap(
+    
+    
+    firstBreakpoints: number[],
+ 
+ 
+        secondBreakpoints:   number[]
+  
+  
+  ): Map<state, number> {
+    let res = new Map<state, number>();
+    for (let i = 0; i < firstBreakpoints.length; i++) {
+      for (let j = 0; j < secondBreakpoints.length; j++) {
+        res.set([]);;;
+      }
+    }
+  }
   calculateUpdatedValuesAndErrors(): Map<number, number>[] {
     let updatedBreakpointValueMap = new Map();
     let updatedPolicy = new Map();
-    this.breakpoints.forEach((breakpoint) => {
+    this.netWorthBreakpoints.forEach((breakpoint) => {
       const [newValue, newPolicy] = this.getNextValueAtBreakpoint(breakpoint);
       updatedBreakpointValueMap.set(breakpoint, newValue);
       updatedPolicy.set(breakpoint, newPolicy);
@@ -135,16 +187,16 @@ class Model {
   }
   getValue(x: number): number {
     let log = false;
-    log && console.log({ max: this.maxBreakpoint });
+    log && console.log({ max: this.maxNetWorthBreakpoint });
     let lower = Math.floor(x);
     let upper = Math.ceil(x);
     let res;
     if (upper <= 0) {
       res = 0;
-    } else if (lower > this.maxBreakpoint) {
+    } else if (lower > this.maxNetWorthBreakpoint) {
       log && console.trace("hi");
       res = 1 / (1 - this.timeDiscount);
-    } else if (upper > this.maxBreakpoint) {
+    } else if (upper > this.maxNetWorthBreakpoint) {
       log && console.log("upper exceeds");
       res = this.breakpointValueMap.get(lower);
     } else if (lower === upper) {

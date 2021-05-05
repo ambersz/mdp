@@ -1,3 +1,6 @@
+# TODO
+* just realized I can't use arrays as the keys to the Map because I will never be able to retrieve the values saved in there again. Maybe two layers of nested Maps? Or a custom 2-key map, since it looks like string-keyed objects are much faster...
+
 # Setup
 * set net worth breakpoints
 * set income breakpoints
@@ -14,8 +17,9 @@
 
 One-time
 1. pre-compute a mapping from yearly return to probability of occurence
-  1. Could pull from yearly historical data
-  2. Or use mean and variance of expected returns and condense into some number of buckets
+    1. Could pull from yearly historical data
+        * https://fred.stlouisfed.org/docs/api/fred/series_observations.html
+    2. Or use mean and variance of expected returns and condense into some number of buckets
 
 Every time
 1. Add income to net worth
