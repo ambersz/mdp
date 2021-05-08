@@ -1,3 +1,7 @@
+import barycentric from "barycentric";
+import _ from "lodash";
+import RBush from "rbush";
+import knn from "rbush-knn";
 import {
   difference,
   operateOverProperties,
@@ -5,7 +9,31 @@ import {
   saveJsonToFile,
   totalSquare,
 } from "./utils.js";
-import _ from "lodash";
+declare type barycentric = (
+  a: [[number, number], [number, number], [number, number], [number, number]]
+) => [number, number, number];
+declare type knn<V> = (tree: RBush<V>, x: number, y: number, k: number) => V[];
+type Point<V = undefined> = {
+  x: number;
+  y: number;
+  value: V;
+};
+class PointBush<V> extends RBush<Point<V>> {
+  toBBox({
+    x,
+    y,
+  }: Point<V>): { minX: number; minY: number; maxX: number; maxY: number } {
+    return { minX: x, minY: y, maxX: x, maxY: y };
+  }
+  compareMinX(a: Point<V>, b: Point<V>) {
+    return a.x - b.x;
+  }
+  compareMinY(a: Point<V>, b: Point<V>) {
+    return a.y - b.y;
+  }
+}
+
+class PointValueBush extends PointBush<number> {}
 
 const p = 1 - 1 / 58.6; // 1/additional life expectancy in years based on ssa actuarial charts
 const returns = JSON.parse(
@@ -14,30 +42,28 @@ const returns = JSON.parse(
 const numberOfIncomeBreakpoints = 100;
 
 type state = [number, number];
-type modelParams = {
-  breakpointValueMap?: Map<state, number>;
-  policy?: Map<state, number>;
+type modelParams<P> = {
+  breakpointValueMap: PointValueBush;
+  policy?: PointBush<P>;
   timeDiscount?: number;
-  netWorthBreakpoints: number[];
-  startingIncome: state[1];
+  minState: Point<undefined>;
+  maxState: Point<undefined>;
+  maxValue: number;
+  fixedValueMap: PointValueBush;
 };
-class Model {
-  breakpointValueMap: Map<state, number>;
-  netWorthBreakpoints: state[0][];
-  incomeBreakpoints: state[1][];
-  maxNetWorthBreakpoint: state[0];
+class Model<P> {
+  breakpointValueMap: PointValueBush;
+  policy: PointBush<P>;
   timeDiscount: number;
-  policy: Map<state, number>;
   constructor({
     breakpointValueMap,
-    netWorthBreakpoints,
     timeDiscount = p,
     policy,
-    startingIncome,
-  }: modelParams) {
-    this.netWorthBreakpoints =
-      netWorthBreakpoints ??
-      _.uniq(Array.from(breakpointValueMap?.keys?.() ?? []).map((s) => s[0]));
+    maxState,
+    minState,
+    maxValue = 1 / (1 - p),
+    fixedValueMap,
+  }: modelParams<P>) {
     this.maxNetWorthBreakpoint = Math.max(...this.netWorthBreakpoints);
     this.incomeBreakpoints = this.createIncomeBreakpoints(startingIncome);
     this.breakpointValueMap =
@@ -61,23 +87,6 @@ class Model {
     }
     return res;
   }
-  createRandomInitialValueMap(
-    
-    
-    firstBreakpoints: number[],
- 
- 
-        secondBreakpoints:   number[]
-  
-  
-  ): Map<state, number> {
-    let res = new Map<state, number>();
-    for (let i = 0; i < firstBreakpoints.length; i++) {
-      for (let j = 0; j < secondBreakpoints.length; j++) {
-        res.set([]);;;
-      }
-    }
-  }
   calculateUpdatedValuesAndErrors(): Map<number, number>[] {
     let updatedBreakpointValueMap = new Map();
     let updatedPolicy = new Map();
@@ -93,130 +102,16 @@ class Model {
     );
     return [updatedBreakpointValueMap, errors, updatedPolicy];
   }
-  getNextValueAtBreakpoint(breakpoint: number) {
-    if (breakpoint === 0) return [0, 0];
-    let log = false;
-    // If bet at most 1/2:
-    // If 3 * V(x-1) - V(x-2) - 2 * V(x) > 0, bet 0 otherwise bet 1/2
-    // ---
-    // Let floor(b)=n and floor(b*2)=m, and assume x-b is at least 1
-    // V() = constant + V(x-1-b) + V(x+2b-1)
-    // x-1-b is between x-2-n and x-1-n.
-    // x-1+2b is between x-1+m and x+m.
-    // With respective weights (1-(b-n)), (b-n), (2b-m), (1-(2b-m))
-    // Constants plus b * (V(x-2-n)+2V(x-1+m) - V(x-2-n) - 2 * V(x+m)).
-    // So if (V(x-2-n)+2V(x-1+m) - V(x-2-n) - 2 * V(x+m)) > 0 then bet m/2 otherwise bet (m-1)/2
-    // ---------
-    // Find a relative maximum, where
-    // (V(x-2-n)+2V(x-1+m) - V(x-2-n) - 2 * V(x+m)) > 0
-    // AND
-    // (V(x-2-n)+2V(x+m) - V(x-2-n) - 2 * V(x+m+1)) < 0
-    // Case 1: you have at least 1 remaining after paying for the bet
-    let maxM = Math.floor(2 * (breakpoint - 1));
-    log && console.log({ maxM });
-    let maxValueComponent = 0;
-    let maxValueM = 0;
-    for (let m = 0; m <= maxM; m++) {
-      // Where m is twice the amount you bet
-      // let n = Math.floor(m / 2); // n is the closest breakpoint to x
-      let loseComponent = this.getValue(breakpoint - 1 - m / 2);
-      let winComponent = this.getValue(breakpoint - 1 + m);
-      if (loseComponent === undefined || winComponent === undefined) {
-        throw new Error(`undefined loseComponent/winComponent`);
-      }
-      let potentialValueComponent = (loseComponent + winComponent) / 2;
-      log &&
-        console.log({
-          m,
-          potentialValueComponent,
-          loseComponent,
-          winComponent,
-          winB: breakpoint - 1 + m,
-        });
-      if (potentialValueComponent > maxValueComponent) {
-        maxValueComponent = potentialValueComponent;
-        maxValueM = m;
-      }
-    }
-    let bet = maxValueM / 2;
-    // console.log({ maxValueM });
-
-    let maxTotalValue = 1 + this.timeDiscount * maxValueComponent;
-    log && console.log({ maxTotalValue });
-    // Case 2: You have less than 1 remaining after paying for the bet
-    // 2a: you have 0 remaining
-    let betItAll =
-      0.5 + (this.timeDiscount * this.getValue(2 * breakpoint)) / 2;
-    log && console.log({ betItAll });
-    if (betItAll > maxTotalValue) {
-      maxTotalValue = betItAll;
-      bet = breakpoint;
-    }
-
-    // 2b: you have 0.5 remaining
-    let saveHalf =
-      0.75 + (this.timeDiscount * this.getValue(2 * breakpoint - 1)) / 2;
-    log &&
-      console.log({
-        saveHalf,
-        d: this.timeDiscount,
-        v: this.getValue(2 * breakpoint - 1),
-        b: 2 * breakpoint - 1,
-      });
-    if (saveHalf > maxTotalValue) {
-      maxTotalValue = saveHalf;
-      bet = breakpoint - 0.5;
-    }
-
-    // 1 + V(x-1+2(x-b))
-    // 1 + V(3x-1-2b) // 3x-1 = N
-    // 1 + V(N)*(1-2b)+V(N-1)*2b // b<0.5
-    // 1 + asdf + 2b (V(N-1)-V(N))
-
-    // 1 + V(N-2)*(2b-1) + V(N-1)*(2-2b) // b>=0.5
-    // 1 + asdf + 2b * (v(N-2) - V(N-1))
-
-    // b + V(b)
-    // Include handling for 1/3 breakpoint?
-
-    return [maxTotalValue, bet];
-  }
+  getNextValueAtBreakpoint(breakpoint: number) {}
   getNextValue(x: number) {
     let b = 0;
     while (b < x) {}
   }
-  getValue(x: number): number {
-    let log = false;
-    log && console.log({ max: this.maxNetWorthBreakpoint });
-    let lower = Math.floor(x);
-    let upper = Math.ceil(x);
-    let res;
-    if (upper <= 0) {
-      res = 0;
-    } else if (lower > this.maxNetWorthBreakpoint) {
-      log && console.trace("hi");
-      res = 1 / (1 - this.timeDiscount);
-    } else if (upper > this.maxNetWorthBreakpoint) {
-      log && console.log("upper exceeds");
-      res = this.breakpointValueMap.get(lower);
-    } else if (lower === upper) {
-      log && console.trace("hi");
-      log && console.log(this.breakpointValueMap);
-      log && console.log(lower);
-      res = this.breakpointValueMap.get(lower);
-    } else {
-      log && console.trace("hi");
-      let diff = x - lower;
-      let upperValue = this.breakpointValueMap.get(upper);
-      let lowerValue = this.breakpointValueMap.get(lower);
-      if (upperValue === undefined || lowerValue === undefined) {
-        throw new Error(`undefined value`);
-      }
-      res = diff * upperValue + (1 - diff) * lowerValue;
-    }
-    log && console.log(res);
-    if (res === undefined) throw new Error(`undefined value`);
-    return res;
+  getValue(state: Point): number {
+      const anchors = knn<Point>(this.breakpointValueMap, state.x, state.y, 3);
+      if (anchors.length < 3) throw new Error('Uh, maybe I have less than 3 points in total in my bush?')
+      anchors.map(a => [a.x, a.y]);
+    //   barycentric([])
   }
   iterateInPlace(n = 1, logTotalError = true) {
     let i = n;
@@ -271,3 +166,5 @@ while (
 console.log(model.breakpointValueMap);
 console.log(model.policy);
 model.save();
+
+//*/

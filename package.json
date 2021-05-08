@@ -13,7 +13,11 @@
   "license": "ISC",
   "dependencies": {
     "@types/node": "^15.0.1",
-    "lodash": "^4.17.21"
+    "@types/rbush": "^3.0.0",
+    "barycentric": "^1.0.1",
+    "lodash": "^4.17.21",
+    "rbush": "^3.0.1",
+    "rbush-knn": "^3.0.1"
   },
   "devDependencies": {
     "@types/lodash": "^4.14.168",
