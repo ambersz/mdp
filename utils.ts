@@ -53,3 +53,7 @@ export function retrieveSavedModel<K, V>(path = "./temp") {
     console.error(err);
   }
 }
+
+export function average(data: number[]): number {
+  return data.reduce((a, b) => a + b, 0) / data.length;
+}
