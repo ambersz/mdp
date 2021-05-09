@@ -24,10 +24,18 @@ export function difference(a?: number, b?: number) {
   return a - b;
 }
 
-export function totalSquare<T>(errors: Map<T, number>) {
-  return Array.from(errors.values()).reduce((subtotalSquare, currentError) => {
-    return subtotalSquare + currentError * currentError;
-  }, 0);
+export function totalSquare<T>(errors: Map<T, number> | number[]) {
+  let values: number[];
+  if (Array.isArray(errors)) {
+    values = errors;
+  } else {
+    values = Array.from(errors.values());
+  }
+  return (
+    values.reduce((subtotalSquare, currentError) => {
+      return subtotalSquare + currentError * currentError;
+    }, 0) / values.length
+  );
 }
 
 export function saveJsonToFile(map: string, path = "./temp") {

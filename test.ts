@@ -1,3 +1,1 @@
-import knn from "rbush-knn";
-
-console.log(knn);
+import { Model } from "./index";
