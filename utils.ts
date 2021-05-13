@@ -1,5 +1,5 @@
-import * as _ from "lodash";
-import * as fs from "fs";
+import * as _ from 'lodash';
+import * as fs from 'fs';
 export function operateOverProperties<K, P, S, V>(
   primaryObject: Map<K, P>,
   secondaryObject: Map<K, S>,
@@ -38,18 +38,18 @@ export function totalSquare<T>(errors: Map<T, number> | number[]) {
   );
 }
 
-export function saveJsonToFile(map: string, path = "./temp") {
+export function saveJsonToFile(map: string, path = './temp') {
   try {
     fs.writeFileSync(path, map, {
-      encoding: "utf-8",
+      encoding: 'utf-8',
     });
   } catch (err) {
     console.error(err);
   }
 }
-export function retrieveSavedModel<K, V>(path = "./temp") {
+export function retrieveSavedModel<K, V>(path = './temp') {
   try {
-    let entries = JSON.parse(fs.readFileSync(path, { encoding: "utf-8" })) as {
+    let entries = JSON.parse(fs.readFileSync(path, { encoding: 'utf-8' })) as {
       policy: [k: K, v: V][];
       breakpointValueMap: [k: K, v: V][];
     };
@@ -63,5 +63,5 @@ export function retrieveSavedModel<K, V>(path = "./temp") {
 }
 
 export function average(data: number[]): number {
-  return data.reduce((a, b) => a + b, 0) / data.length;
+  return data.map((a) => a / data.length).reduce((a, b) => a + b, 0);
 }
