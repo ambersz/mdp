@@ -4,9 +4,10 @@ import RBush from 'rbush';
 import knn from 'rbush-knn';
 import {
   average,
+  biOrLinear,
   difference,
   operateOverProperties,
-  retrieveSavedModel,
+  //   retrieveSavedModel,
   saveJsonToFile,
   totalSquare,
 } from './utils.js';
@@ -19,10 +20,12 @@ export type Point<V = undefined> = V extends undefined
       value: V;
     };
 class PointBush<V> extends RBush<Point<V>> {
-  toBBox({
-    x,
-    y,
-  }: Point<V>): { minX: number; minY: number; maxX: number; maxY: number } {
+  toBBox({ x, y }: Point<V>): {
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+  } {
     return { minX: x, minY: y, maxX: x, maxY: y };
   }
   compareMinX(a: Point<V>, b: Point<V>) {
@@ -33,7 +36,6 @@ class PointBush<V> extends RBush<Point<V>> {
   }
 }
 
-export class PointValueBush extends PointBush<InfoValues> {}
 type InfoValues = {
   value: number;
   policy?: number;
@@ -46,22 +48,55 @@ const returns: number[] = JSON.parse(
   '[1.164,0.952,0.776,1.123,1.23,1.03,1.077,1.25,1.181,1.15,0.969,1.43,1.014,1.221,1.304,1.21,0.961,1.25,1.037,1.169,1.152,1.134,1.048,1.197,1.258,1.294,1.232,1.216,1.115,0.831,0.862,1.007,1.21,1.104,1.119,1.15,0.843,0.806,1.251,1.14,1.101,1.231,1.198,1.08,1.023,1.199,1.142,1.072,1.121]'
 ); // yearly multiplier on Wilshire 5000 Total Market Full Cap index, data from FRED
 const numberOfIncomeBreakpoints = 100;
-const policies = new Array(10).fill(0).map((_, i) => i / 10);
+const n = 4;
+const policies = new Array(n).fill(0).map((_, i) => i / (n - 1));
 const expenses = 40000;
 type state = [number, number];
 type modelParams = {
-  breakpointValueMap: PointValueBush;
-  policy?: PointBush<InfoValues>;
+  breakpointValueMap: PointMap<InfoValues>;
+  policy?: PointMap<InfoValues>;
   timeDiscount?: number;
   minState: Point<undefined>;
   maxState: Point<undefined>;
   maxValue: number;
-  fixedValueMap?: PointValueBush;
+  fixedValueMap?: PointMap<InfoValues>;
   returns: number[];
   expenses: number;
 };
+export class PointMap<V> {
+  _map: {
+    [k: string]: Point<V>;
+  };
+  constructor() {
+    this._map = {};
+  }
+  get(a: Point): Point<V> | undefined {
+    return this._map[this._key(a)];
+  }
+  _key(a: Point) {
+    return `${a.x},${a.y}`;
+  }
+  set(v: Point<V>) {
+    this._map[this._key(v)] = v;
+  }
+  all() {
+    return Object.values(this._map);
+  }
+  insert(v: Point<V>) {
+    return this.set(v);
+  }
+  load(vs: Point<V>[]) {
+    return vs.forEach((v) => this.set(v));
+  }
+  toJSON() {
+    return JSON.stringify(this._map);
+  }
+  fromJSON(json: string) {
+    this._map = JSON.parse(json);
+  }
+}
 export class Model {
-  breakpointValueMap: PointValueBush;
+  breakpointValueMap: PointMap<InfoValues>;
   timeDiscount: number;
   minState: Point<undefined>;
   maxState: Point<undefined>;
@@ -106,7 +141,7 @@ export class Model {
    */
   calculateUpdatedValuesAndPolicies(
     addBreakpoints: boolean = false
-  ): [PointBush<InfoValues>, number[]] {
+  ): [PointMap<InfoValues>, number[]] {
     let updatedValues: Point<InfoValues>[] = [];
     let maxError = 0;
     let maxErrorPoint: Point;
@@ -133,7 +168,7 @@ export class Model {
         maxErrorPoint = point;
       }
     });
-    const updatedValueBush = new PointBush<InfoValues>();
+    const updatedValueBush = new PointMap<InfoValues>();
     updatedValueBush.load(updatedValues);
     if (addBreakpoints) {
       if (errorDependencies.length > 0) {
@@ -147,10 +182,7 @@ export class Model {
         console.log({ maxErrorPoint: maxErrorPoint!, maxError });
       }
       errorDependencies.forEach(({ x, y }) => {
-        if (
-          updatedValueBush.search({ minX: x, maxX: x, minY: y, maxY: y })
-            .length === 0
-        ) {
+        if (updatedValueBush.get({ x, y }) === undefined) {
           const [value, _, policy] = this.getNextValue({ x, y });
           updatedValueBush.insert({
             x,
@@ -182,6 +214,9 @@ export class Model {
         (m) => m * state.y
       )
     );
+    if (options === undefined) {
+      throw new Error();
+    }
     options.forEach((policy) => {
       let nw = state.x;
       let reward: number = 0;
@@ -223,6 +258,7 @@ export class Model {
         }
         reward += fv;
       }
+      if (!Number.isFinite(reward)) throw new Error();
       // if greatest so far, overwrite the total value and dependency array
       if (reward > maxValue) {
         maxValue = reward;
@@ -230,68 +266,60 @@ export class Model {
         maxPolicy = policy;
       }
     });
+    if (!Number.isFinite(maxValue)) throw new Error('infinite');
     // after looping, return te total value and dependency array
     // clamp value
     // maxValue = Math.max(-this.maxValue, Math.min(this.maxValue, maxValue));
     return [maxValue, maxDependencies, maxPolicy];
   }
+  getClampedPoint(state: Point): Point<InfoValues> | undefined {
+    if (state.x > this.maxState.x) state.x = this.maxState.x;
+    if (state.y > this.maxState.y) state.y = this.maxState.y;
+    const ret = this.breakpointValueMap.get({
+      x: Math.min(state.x, this.maxState.x),
+      y: Math.min(state.y, this.maxState.y),
+    });
+    if (ret === undefined) return;
+    return { ...ret, x: state.x, y: state.y };
+  }
   getValue(state: Point): number {
     if (state.x === 2 && state.y === 0) {
       console.log('a');
     }
-    const directLookup = this.breakpointValueMap.search(
-      this.breakpointValueMap.toBBox({ ...state, value: { value: 0 } })
-    );
-    console.log(directLookup);
-    if (directLookup.length > 0) return directLookup[0].value.value;
-    let anchors = knn(this.breakpointValueMap, state.x, state.y, 3);
-    if (state.x < 0) throw new Error(JSON.stringify({ state }));
-    if (state.y < 0) throw new Error(JSON.stringify({ state }));
-    let xs = _.uniq(anchors.map((a) => a.x));
-    let ys = _.uniq(anchors.map((a) => a.y));
-    if (xs.length === 1 || ys.length === 1) {
-      anchors = [anchors[0]];
-      xs = _.uniq(anchors.map((a) => a.x));
-      ys = _.uniq(anchors.map((a) => a.y));
-      while (true) {
-        if (anchors.length === 3 && xs.length !== 1 && ys.length !== 1) break;
-        anchors = [
-          ...anchors,
-          ...knn(
-            this.breakpointValueMap,
-            state.x,
-            state.y,
-            1,
-            (candidate) =>
-              !xs.includes(candidate.x) && !ys.includes(candidate.y)
-          ),
-        ];
-        xs = _.uniq(anchors.map((a) => a.x));
-        ys = _.uniq(anchors.map((a) => a.y));
+    if (state.x > this.maxState.x) state.x = this.maxState.x;
+    if (state.y > this.maxState.y) state.y = this.maxState.y;
+    const directLookup = this.breakpointValueMap.get(state);
+    if (directLookup !== undefined) return directLookup.value.value;
+    let anchors = [] as Point<InfoValues>[];
+    for (let X = 0; X < 2; X++) {
+      const x =
+        (Math.floor(state.x / this.expenses) + (X ? 1 : 0)) * this.expenses;
+      for (let Y = 0; Y < 2; Y++) {
+        const y =
+          ((Math.floor(10 * (state.y / this.expenses)) + (Y ? 1 : 0)) *
+            this.expenses) /
+          10;
+        if (y === undefined)
+          console.log(
+            ((Math.floor((state.y / this.expenses) * 10) + (Y ? 1 : 0)) *
+              this.expenses) /
+              10
+          );
+        if (anchors.length > 2) {
+          const xs = _.uniq(anchors.map((a) => a.x));
+          const ys = _.uniq(anchors.map((a) => a.y));
+          if (xs.length < 2 || ys.length < 2) throw new Error();
+        }
+        const anchor = this.getClampedPoint({ x, y });
+        if (anchor === undefined) throw new Error();
+        anchors.push(anchor);
       }
     }
-    if (anchors.length < 3)
-      throw new Error(
-        'Uh, maybe I have less than 3 points in total in my bush?'
-      );
-    if (anchors.length > 3) throw new Error('asdf');
-    // if (anchors.length === 3) {
-    // let f = anchors.map((a): [number, number] => [a.x, a.y]) ;
-    const coords = barycentric(
-      anchors.map((a): [number, number] => [a.x, a.y]) as [
-        [number, number],
-        [number, number],
-        [number, number]
-      ],
-      [state.x, state.y]
-    ); // Typescript is dumb exhibit #2619,
-    let value = 0;
-    coords.forEach((scale, i) => {
-      value += anchors[i].value.value * scale;
-    });
-    value = Math.min(this.maxValue, Math.max(-this.maxValue, value));
-    return value;
-    // }
+    const px = (state.x - anchors[0].x) / (anchors[3].x - anchors[0].x);
+    const py = (state.y - anchors[0].y) / (anchors[1].y - anchors[0].y);
+    const value = biOrLinear(anchors, px, py);
+    if (Number.isNaN(value.value.value)) throw new Error();
+    return value.value.value;
   }
   iterateInPlace(n = 1, logTotalError = true): number {
     let i = n;
@@ -349,19 +377,21 @@ export class Model {
   }
 }
 export function run() {
-  let breakpointValueMap = new PointBush<InfoValues>();
-  breakpointValueMap.load([
-    { x: 0, y: 80002, value: 0 },
-    { x: 240000, y: 80000, value: 100 },
-    { x: 1000000, y: 80001, value: 200 },
-  ]);
-  let fixedValueMap = new PointBush<InfoValues>();
-  fixedValueMap.insert({ x: 0, y: 0, value: 0 });
+  let breakpointValueMap = new PointMap<InfoValues>();
+  for (let nwm = 0; nwm <= 100; nwm++) {
+    for (let im = 0; im <= 50; im++) {
+      breakpointValueMap.set({
+        x: nwm * expenses,
+        y: (im * expenses) / 10,
+        value: { value: Math.random() },
+      });
+    }
+  }
   let initModel = {
     breakpointValueMap,
     minState: { x: 0, y: 0 },
-    maxState: { x: 100 * expenses, y: 59089 },
-    fixedValueMap,
+    maxState: { x: 100 * expenses, y: 5 * expenses },
+    // fixedValueMap,
     maxValue: 1.1 / (1 - p),
     returns,
     expenses,
@@ -379,7 +409,6 @@ export function run() {
   }
 
   console.log(model.breakpointValueMap.all());
-  console.log(model.policy.all().filter((p) => p.value !== 0));
 }
 run();
 // */
